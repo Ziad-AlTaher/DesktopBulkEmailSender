@@ -4,11 +4,11 @@
 ; ==============================================================================
 
 #define MyAppName        "Desktop Bulk Email Sender"
-#define MyAppVersion     "1.0.0"
+#define MyAppVersion     "1.1.0"
 #define MyAppPublisher   "Ziad Al-Taher"
 #define MyAppExeName     "DesktopBulkEmailSender.exe"
 #define MyAppURL         "https://github.com/Ziad-AlTaher/DesktopBulkEmailSender"
-#define SourceDir        "publish"
+#define SourceDir        "DesktopBulkEmailSender\bin\\Release\\net8.0-windows"
 
 [Setup]
 ; Unique GUID identifying this application for install / updates
@@ -32,6 +32,7 @@ OutputBaseFilename=DesktopBulkEmailSender_Setup_v{#MyAppVersion}
 Compression=lzma2/ultra64
 SolidCompression=yes
 WizardStyle=modern
+SetupIconFile=app_icon.ico
 
 ; Execution privileges (Allows standard user install or admin for all users)
 PrivilegesRequired=lowest
@@ -52,8 +53,9 @@ Name: "english"; MessagesFile: "compiler:Default.isl"
 Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{cm:AdditionalIcons}"; Flags: unchecked
 
 [Files]
-; Packages the single-file or published payload from the "publish" folder
+; Packages the published payload from the Release folder
 Source: "{#SourceDir}\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
+Source: "app_icon.ico"; DestDir: "{app}"; Flags: ignoreversion
 
 [Icons]
 ; Start Menu shortcuts

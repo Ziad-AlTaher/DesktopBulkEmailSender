@@ -8,7 +8,7 @@
     <RootNamespace>DesktopBulkEmailSender</RootNamespace>
     <Nullable>disable</Nullable>
     <ImplicitUsings>disable</ImplicitUsings>
-    <ApplicationIcon />
+    <ApplicationIcon>app_icon.ico</ApplicationIcon>
     <StartupObject />
     <AllowUnsafeBlocks>false</AllowUnsafeBlocks>
     <PlatformTarget>AnyCPU</PlatformTarget>
