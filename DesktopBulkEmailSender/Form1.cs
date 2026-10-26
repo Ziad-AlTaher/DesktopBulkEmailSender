@@ -69,6 +69,16 @@ namespace DesktopBulkEmailSender
             this.Font          = new Font("Segoe UI", 9.5f);
             this.BackColor     = Color.FromArgb(245, 247, 250);
 
+            try
+            {
+                var iconPath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "app_icon.ico");
+                if (File.Exists(iconPath))
+                {
+                    this.Icon = new Icon(iconPath);
+                }
+            }
+            catch { }
+
             BuildUI();
             ApplyTheme();
             WireEvents();
@@ -84,17 +94,37 @@ namespace DesktopBulkEmailSender
             var header = new Panel
             {
                 Dock      = DockStyle.Top,
-                Height    = 62,
+                Height    = 66,
                 BackColor = Color.FromArgb(30, 41, 59),
                 Padding   = new Padding(16, 0, 16, 0)
             };
+
+            PictureBox picLogo = null;
+            var logoPath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "app_icon.png");
+            if (File.Exists(logoPath))
+            {
+                try
+                {
+                    picLogo = new PictureBox
+                    {
+                        Image     = Image.FromFile(logoPath),
+                        SizeMode  = PictureBoxSizeMode.Zoom,
+                        Size      = new Size(42, 42),
+                        Location  = new Point(16, 12),
+                        BackColor = Color.Transparent
+                    };
+                }
+                catch { }
+            }
+
+            int titleX = picLogo != null ? 68 : 16;
             var lblTitle = new Label
             {
-                Text      = "✉  Bulk Email Sender",
+                Text      = picLogo != null ? "Bulk Email Sender" : "✉  Bulk Email Sender",
                 ForeColor = Color.White,
-                Font      = new Font("Segoe UI", 17f, FontStyle.Bold),
+                Font      = new Font("Segoe UI", 16.5f, FontStyle.Bold),
                 AutoSize  = true,
-                Location  = new Point(16, 12)
+                Location  = new Point(titleX, 10)
             };
             var lblSub = new Label
             {
@@ -102,7 +132,7 @@ namespace DesktopBulkEmailSender
                 ForeColor = Color.FromArgb(148, 163, 184),
                 Font      = new Font("Segoe UI", 9f),
                 AutoSize  = true,
-                Location  = new Point(18, 42)
+                Location  = new Point(titleX + 2, 40)
             };
 
             btnSaveHeader = new Button
@@ -117,11 +147,13 @@ namespace DesktopBulkEmailSender
                 Anchor    = AnchorStyles.Top | AnchorStyles.Right
             };
             btnSaveHeader.FlatAppearance.BorderSize = 0;
-            btnSaveHeader.Location = new Point(header.ClientSize.Width - 135, 13);
+            btnSaveHeader.Location = new Point(header.ClientSize.Width - 135, 14);
             header.Resize += (s, e) => {
-                btnSaveHeader.Location = new Point(header.ClientSize.Width - 135, 13);
+                btnSaveHeader.Location = new Point(header.ClientSize.Width - 135, 14);
             };
 
+            if (picLogo != null)
+                header.Controls.Add(picLogo);
             header.Controls.AddRange(new Control[] { lblTitle, lblSub, btnSaveHeader });
 
             // Status strip
@@ -166,9 +198,9 @@ namespace DesktopBulkEmailSender
 
             AddSectionLabel(pnl, "Sender Credentials", ref y);
 
-            AddLabel(pnl, "Gmail Address:", 20, y);
+            AddLabel(pnl, "Email Address:", 20, y);
             txtSenderEmail = AddTextBox(pnl, 185, y, 340);
-            txtSenderEmail.PlaceholderText = "e.g. yourname@gmail.com";
+            txtSenderEmail.PlaceholderText = "e.g. yourname@gmail.com or user@company.com";
             y += 36;
 
             AddLabel(pnl, "Display Name:", 20, y);
@@ -176,9 +208,9 @@ namespace DesktopBulkEmailSender
             txtSenderName.PlaceholderText = "e.g. Your Name";
             y += 36;
 
-            AddLabel(pnl, "App Password:", 20, y);
+            AddLabel(pnl, "Password / App Pass:", 20, y);
             txtAppPassword = AddTextBox(pnl, 185, y, 280);
-            txtAppPassword.PlaceholderText = "Gmail App Password (not your login password)";
+            txtAppPassword.PlaceholderText = "App Password or SMTP Password";
             txtAppPassword.UseSystemPasswordChar = true;
             chkShowPassword = new CheckBox { Text = "Show", Location = new Point(471, y + 2), AutoSize = true };
             pnl.Controls.Add(chkShowPassword);
@@ -240,22 +272,34 @@ namespace DesktopBulkEmailSender
             // ── Left: grid panel ────────────────────────────────────────
             var leftPanel = new Panel { Dock = DockStyle.Fill };
 
-            var toolbar = new Panel { Dock = DockStyle.Top, Height = 44, BackColor = Color.FromArgb(241, 245, 249), Padding = new Padding(4, 6, 4, 4) };
+            var topToolbar = new Panel
+            {
+                Dock      = DockStyle.Top,
+                Height    = 42,
+                BackColor = Color.FromArgb(241, 245, 249),
+                Padding   = new Padding(8, 6, 8, 4)
+            };
 
             lblRecipientCount = new Label
             {
                 Text      = "Recipients: 0",
-                Location  = new Point(6, 12),
+                Location  = new Point(8, 11),
                 AutoSize  = true,
-                Font      = new Font("Segoe UI", 9f, FontStyle.Bold),
+                Font      = new Font("Segoe UI", 9.5f, FontStyle.Bold),
                 ForeColor = Color.FromArgb(51, 65, 85)
             };
 
-            var lblGroup = new Label { Text = "Sort/Group:", Location = new Point(148, 12), AutoSize = true };
+            var lblGroup = new Label
+            {
+                Text     = "Sort/Group:",
+                Location = new Point(200, 11),
+                AutoSize = true,
+                Font     = new Font("Segoe UI", 9f)
+            };
             cmbGroupBy = new ComboBox
             {
-                Location      = new Point(224, 8),
-                Width         = 155,
+                Location      = new Point(280, 8),
+                Width         = 185,
                 DropDownStyle = ComboBoxStyle.DropDownList,
                 Font          = new Font("Segoe UI", 9f)
             };
@@ -267,20 +311,57 @@ namespace DesktopBulkEmailSender
             });
             cmbGroupBy.SelectedIndex = 0;
 
-            btnAddRow         = SmBtn("+ Add",      Color.FromArgb(34, 197, 94),  365, 8);
-            btnAddRow.Width   = 56;
-            btnRemoveSelected = SmBtn("Remove",     Color.FromArgb(239, 68, 68),  425, 8);
-            btnRemoveSelected.Width = 62;
-            btnClearAll       = SmBtn("Clear",      Color.FromArgb(107, 114, 128),491, 8);
-            btnClearAll.Width = 50;
-            btnCheckAll       = SmBtn("✔ All",     Color.FromArgb(59, 130, 246),  545, 8);
-            btnCheckAll.Width = 56;
-            btnUncheckAll     = SmBtn("✖ None",    Color.FromArgb(100, 116, 139), 605, 8);
-            btnUncheckAll.Width = 62;
-            btnDedup          = SmBtn("Dedup",      Color.FromArgb(14, 165, 233), 671, 8);
-            btnDedup.Width    = 58;
+            topToolbar.Controls.AddRange(new Control[] { lblRecipientCount, lblGroup, cmbGroupBy });
 
-            toolbar.Controls.AddRange(new Control[] { lblRecipientCount, lblGroup, cmbGroupBy, btnAddRow, btnRemoveSelected, btnClearAll, btnCheckAll, btnUncheckAll, btnDedup });
+            // Bottom toolbar for action buttons (aesthetic footer)
+            var bottomToolbar = new FlowLayoutPanel
+            {
+                Dock         = DockStyle.Bottom,
+                Height       = 44,
+                BackColor    = Color.FromArgb(241, 245, 249),
+                Padding      = new Padding(6, 6, 6, 6),
+                WrapContents = false,
+                AutoScroll   = false
+            };
+
+            btnAddRow         = SmBtn("+ Add",   Color.FromArgb(34, 197, 94),   0, 0);
+            btnAddRow.Width   = 64;
+            btnAddRow.Height  = 30;
+            btnAddRow.Margin  = new Padding(3, 1, 3, 1);
+
+            btnRemoveSelected = SmBtn("Remove",  Color.FromArgb(239, 68, 68),   0, 0);
+            btnRemoveSelected.Width = 74;
+            btnRemoveSelected.Height = 30;
+            btnRemoveSelected.Margin = new Padding(3, 1, 3, 1);
+
+            btnClearAll       = SmBtn("Clear",   Color.FromArgb(107, 114, 128), 0, 0);
+            btnClearAll.Width = 62;
+            btnClearAll.Height = 30;
+            btnClearAll.Margin = new Padding(3, 1, 3, 1);
+
+            btnCheckAll       = SmBtn("✔ All",  Color.FromArgb(59, 130, 246),  0, 0);
+            btnCheckAll.Width = 66;
+            btnCheckAll.Height = 30;
+            btnCheckAll.Margin = new Padding(3, 1, 3, 1);
+
+            btnUncheckAll     = SmBtn("✖ None", Color.FromArgb(100, 116, 139), 0, 0);
+            btnUncheckAll.Width = 74;
+            btnUncheckAll.Height = 30;
+            btnUncheckAll.Margin = new Padding(3, 1, 3, 1);
+
+            btnDedup          = SmBtn("Dedup",   Color.FromArgb(14, 165, 233),  0, 0);
+            btnDedup.Width    = 70;
+            btnDedup.Height   = 30;
+            btnDedup.Margin   = new Padding(3, 1, 3, 1);
+
+            bottomToolbar.Controls.AddRange(new Control[] {
+                btnAddRow,
+                btnRemoveSelected,
+                btnClearAll,
+                btnCheckAll,
+                btnUncheckAll,
+                btnDedup
+            });
 
             dgvRecipients = new DataGridView
             {
@@ -308,11 +389,26 @@ namespace DesktopBulkEmailSender
                 ThreeState   = false
             };
             dgvRecipients.Columns.Add(colSend);
-            dgvRecipients.Columns.Add(new DataGridViewTextBoxColumn { Name = "Email",   HeaderText = "Email Address",    FillWeight = 60 });
-            dgvRecipients.Columns.Add(new DataGridViewTextBoxColumn { Name = "Company", HeaderText = "Company / Domain", FillWeight = 40, ReadOnly = true });
+            dgvRecipients.Columns.Add(new DataGridViewTextBoxColumn { Name = "Email",   HeaderText = "Email Address",    FillWeight = 55 });
+            dgvRecipients.Columns.Add(new DataGridViewTextBoxColumn { Name = "Company", HeaderText = "Company / Domain", FillWeight = 30, ReadOnly = true });
+
+            var colDuplicates = new DataGridViewTextBoxColumn
+            {
+                Name         = "Duplicates",
+                HeaderText   = "Duplicates",
+                Width        = 85,
+                AutoSizeMode = DataGridViewAutoSizeColumnMode.None,
+                ReadOnly     = true,
+                DefaultCellStyle = new DataGridViewCellStyle
+                {
+                    Alignment = DataGridViewContentAlignment.MiddleCenter
+                }
+            };
+            dgvRecipients.Columns.Add(colDuplicates);
 
             leftPanel.Controls.Add(dgvRecipients);
-            leftPanel.Controls.Add(toolbar);
+            leftPanel.Controls.Add(bottomToolbar);
+            leftPanel.Controls.Add(topToolbar);
 
             // ── Right: bulk paste panel ─────────────────────────────────
             var rightPanel = new Panel { Dock = DockStyle.Fill };
@@ -615,6 +711,7 @@ namespace DesktopBulkEmailSender
             btnClearAll.Click                   += BtnClearAll_Click;
             cmbGroupBy.SelectedIndexChanged     += (s, e) => ApplySorting();
             dgvRecipients.CellEndEdit           += DgvRecipients_CellEndEdit;
+            dgvRecipients.CellFormatting        += DgvRecipients_CellFormatting;
             btnParsePaste.Click                 += (s, e) => ParseAndAddRecipients(rtbPaste.Text);
 
             btnLoadHtmlFile.Click               += BtnLoadHtmlFile_Click;
@@ -651,9 +748,11 @@ namespace DesktopBulkEmailSender
         private void AddNewRow()
         {
             int idx = dgvRecipients.Rows.Add();
-            dgvRecipients.Rows[idx].Cells["Send"].Value = true;
+            dgvRecipients.Rows[idx].Cells["Send"].Value       = true;
+            dgvRecipients.Rows[idx].Cells["Duplicates"].Value = 0;
             dgvRecipients.CurrentCell = dgvRecipients.Rows[idx].Cells["Email"];
             dgvRecipients.BeginEdit(true);
+            UpdateDuplicateCounts();
         }
 
         private void BtnRemoveSelected_Click(object sender, EventArgs e)
@@ -661,6 +760,7 @@ namespace DesktopBulkEmailSender
             foreach (DataGridViewRow row in dgvRecipients.SelectedRows)
                 if (!row.IsNewRow) dgvRecipients.Rows.Remove(row);
             UpdateRecipientCount();
+            UpdateDuplicateCounts();
         }
 
         private void BtnClearAll_Click(object sender, EventArgs e)
@@ -669,17 +769,23 @@ namespace DesktopBulkEmailSender
             {
                 dgvRecipients.Rows.Clear();
                 UpdateRecipientCount();
+                UpdateDuplicateCounts();
             }
         }
 
         private void ParseAndAddRecipients(string raw)
         {
-            if (string.IsNullOrWhiteSpace(raw)) return;
+            if (string.IsNullOrWhiteSpace(raw))
+            {
+                MessageBox.Show("Please enter or paste at least one email address in the Bulk Paste box.", "No Recipients", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                return;
+            }
+
+            // Remove existing recipients in the grid and replace with the new list
+            dgvRecipients.Rows.Clear();
 
             var tokens = raw.Split(new[] { '\r', '\n', ',', ';' }, StringSplitOptions.RemoveEmptyEntries);
-            var existing = GetCurrentEmails();
             int added = 0;
-            int duplicates = 0;
 
             foreach (var token in tokens)
             {
@@ -690,41 +796,26 @@ namespace DesktopBulkEmailSender
                 var email = CleanEmail(trimmed);
                 if (string.IsNullOrWhiteSpace(email)) continue;
 
-                if (existing.Contains(email))
-                {
-                    duplicates++;
-                    // If the existing entry was disabled, but this new one is enabled (without #), enable it
-                    if (isEnabled)
-                    {
-                        foreach (DataGridViewRow row in dgvRecipients.Rows)
-                        {
-                            if (row.IsNewRow) continue;
-                            if (string.Equals(CleanEmail(row.Cells["Email"].Value?.ToString() ?? ""), email, StringComparison.OrdinalIgnoreCase))
-                            {
-                                row.Cells["Send"].Value = true;
-                                break;
-                            }
-                        }
-                    }
-                    continue;
-                }
-
                 var company = ExtractCompany(email);
                 int idx = dgvRecipients.Rows.Add();
-                dgvRecipients.Rows[idx].Cells["Send"].Value    = isEnabled;
-                dgvRecipients.Rows[idx].Cells["Email"].Value   = email;
-                dgvRecipients.Rows[idx].Cells["Company"].Value = company;
-                existing.Add(email);
+                dgvRecipients.Rows[idx].Cells["Send"].Value       = isEnabled;
+                dgvRecipients.Rows[idx].Cells["Email"].Value      = email;
+                dgvRecipients.Rows[idx].Cells["Company"].Value    = company;
+                dgvRecipients.Rows[idx].Cells["Duplicates"].Value = 0;
                 added++;
             }
 
             ApplySorting();
             UpdateRecipientCount();
+            UpdateDuplicateCounts();
 
-            if (duplicates > 0)
-                SetStatus($"Added {added} recipient(s). {duplicates} duplicate(s) prevented.");
+            int dupCount = dgvRecipients.Rows.Cast<DataGridViewRow>()
+                .Count(r => !r.IsNewRow && (r.Cells["Duplicates"].Value is int n) && n > 0);
+
+            if (dupCount > 0)
+                SetStatus($"Loaded {added} recipient(s). {dupCount} duplicate email(s) highlighted in red.");
             else
-                SetStatus($"Added {added} recipient(s).");
+                SetStatus($"Loaded {added} recipient(s).");
         }
 
         private void DgvRecipients_CellEndEdit(object sender, DataGridViewCellEventArgs e)
@@ -740,32 +831,66 @@ namespace DesktopBulkEmailSender
 
                 if (string.IsNullOrEmpty(clean))
                 {
-                    row.Cells["Company"].Value = "";
+                    row.Cells["Company"].Value    = "";
+                    row.Cells["Duplicates"].Value = 0;
                     UpdateRecipientCount();
+                    UpdateDuplicateCounts();
                     return;
                 }
 
-                // Check for duplicate in other rows
-                for (int i = 0; i < dgvRecipients.Rows.Count; i++)
-                {
-                    if (i == e.RowIndex) continue;
-                    var otherRow = dgvRecipients.Rows[i];
-                    if (otherRow.IsNewRow) continue;
-
-                    var otherClean = CleanEmail(otherRow.Cells["Email"].Value?.ToString() ?? "");
-                    if (string.Equals(clean, otherClean, StringComparison.OrdinalIgnoreCase))
-                    {
-                        MessageBox.Show($"'{clean}' is already in the recipients list!", "Duplicate Email", MessageBoxButtons.OK, MessageBoxIcon.Warning);
-                        dgvRecipients.Rows.RemoveAt(e.RowIndex);
-                        UpdateRecipientCount();
-                        return;
-                    }
-                }
-
-                row.Cells["Email"].Value = clean;
+                row.Cells["Email"].Value   = clean;
                 row.Cells["Company"].Value = ExtractCompany(clean);
+                UpdateRecipientCount();
+                UpdateDuplicateCounts();
             }
-            UpdateRecipientCount();
+        }
+
+        private void DgvRecipients_CellFormatting(object sender, DataGridViewCellFormattingEventArgs e)
+        {
+            if (e.RowIndex < 0 || e.RowIndex >= dgvRecipients.Rows.Count) return;
+            var row = dgvRecipients.Rows[e.RowIndex];
+            if (row.IsNewRow) return;
+
+            var val = row.Cells["Duplicates"].Value;
+            int n = 0;
+            if (val is int intVal) n = intVal;
+            else if (val != null && int.TryParse(val.ToString(), out int parsed)) n = parsed;
+
+            if (n > 0)
+            {
+                e.CellStyle.BackColor = Color.FromArgb(254, 226, 226); // soft coral/red
+                e.CellStyle.ForeColor = Color.FromArgb(153, 27, 27);   // dark red text
+                e.CellStyle.SelectionBackColor = Color.FromArgb(239, 68, 68); // selected red
+                e.CellStyle.SelectionForeColor = Color.White;
+            }
+        }
+
+        private void UpdateDuplicateCounts()
+        {
+            var counts = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+
+            // First pass: count frequencies of each cleaned email
+            foreach (DataGridViewRow row in dgvRecipients.Rows)
+            {
+                if (row.IsNewRow) continue;
+                var email = CleanEmail(row.Cells["Email"].Value?.ToString() ?? "");
+                if (!string.IsNullOrEmpty(email))
+                {
+                    counts[email] = counts.TryGetValue(email, out int c) ? c + 1 : 1;
+                }
+            }
+
+            // Second pass: assign n = (total - 1) duplicates to each row
+            foreach (DataGridViewRow row in dgvRecipients.Rows)
+            {
+                if (row.IsNewRow) continue;
+                var email = CleanEmail(row.Cells["Email"].Value?.ToString() ?? "");
+                int total = (!string.IsNullOrEmpty(email) && counts.TryGetValue(email, out int c)) ? c : 0;
+                int n = total > 1 ? (total - 1) : 0;
+                row.Cells["Duplicates"].Value = n;
+            }
+
+            dgvRecipients.Invalidate();
         }
 
         private int DeduplicateRecipients()
@@ -794,6 +919,7 @@ namespace DesktopBulkEmailSender
             }
 
             UpdateRecipientCount();
+            UpdateDuplicateCounts();
             return toRemove.Count;
         }
 
@@ -806,6 +932,7 @@ namespace DesktopBulkEmailSender
                 row.Cells["Company"].Value = !string.IsNullOrEmpty(email) ? ExtractCompany(email) : "";
             }
             UpdateRecipientCount();
+            UpdateDuplicateCounts();
         }
 
         private void ApplySorting()
@@ -832,11 +959,13 @@ namespace DesktopBulkEmailSender
             foreach (var (send, email, company) in rows)
             {
                 int idx = dgvRecipients.Rows.Add();
-                dgvRecipients.Rows[idx].Cells["Send"].Value    = send;
-                dgvRecipients.Rows[idx].Cells["Email"].Value   = email;
-                dgvRecipients.Rows[idx].Cells["Company"].Value = company;
+                dgvRecipients.Rows[idx].Cells["Send"].Value       = send;
+                dgvRecipients.Rows[idx].Cells["Email"].Value      = email;
+                dgvRecipients.Rows[idx].Cells["Company"].Value    = company;
+                dgvRecipients.Rows[idx].Cells["Duplicates"].Value = 0;
             }
             UpdateRecipientCount();
+            UpdateDuplicateCounts();
         }
 
         private HashSet<string> GetCurrentEmails()
@@ -1067,6 +1196,11 @@ namespace DesktopBulkEmailSender
                         sent++;
                         AppendLog($"[{DateTime.Now:HH:mm:ss}] ✔  {i + 1}/{recipients.Count}  →  {toEmail}",
                                   Color.FromArgb(134, 239, 172));
+
+                        Invoke((MethodInvoker)(() =>
+                        {
+                            MarkEmailAsSent(toEmail);
+                        }));
                     }
                     catch (OperationCanceledException)
                     {
@@ -1106,6 +1240,53 @@ namespace DesktopBulkEmailSender
             btnSend.Enabled   = true;
             btnCancel.Enabled = false;
             SetStatus($"Done — Sent: {sent}  |  Failed: {failed}  |  Total: {recipients.Count}");
+        }
+
+        private void MarkEmailAsSent(string sentEmail)
+        {
+            if (string.IsNullOrWhiteSpace(sentEmail)) return;
+
+            // 1. Uncheck Send in the grid
+            foreach (DataGridViewRow row in dgvRecipients.Rows)
+            {
+                if (row.IsNewRow) continue;
+                var email = CleanEmail(row.Cells["Email"].Value?.ToString() ?? "");
+                if (string.Equals(email, sentEmail, StringComparison.OrdinalIgnoreCase))
+                {
+                    row.Cells["Send"].Value = false;
+                }
+            }
+            UpdateRecipientCount();
+
+            // 2. Prepend '#' before this email in the paste box (rtbPaste)
+            if (!string.IsNullOrEmpty(rtbPaste.Text))
+            {
+                var lines = rtbPaste.Lines;
+                bool modified = false;
+                for (int idx = 0; idx < lines.Length; idx++)
+                {
+                    var line = lines[idx];
+                    var trimmed = line.Trim();
+                    if (trimmed.IndexOf(sentEmail, StringComparison.OrdinalIgnoreCase) >= 0)
+                    {
+                        if (!trimmed.StartsWith("#"))
+                        {
+                            int indentLen = line.Length - line.TrimStart().Length;
+                            string indent = line.Substring(0, indentLen);
+                            string rest = line.Substring(indentLen);
+                            lines[idx] = indent + "#" + rest;
+                            modified = true;
+                        }
+                    }
+                }
+                if (modified)
+                {
+                    rtbPaste.Lines = lines;
+                }
+            }
+
+            // 3. Persist immediately to settings.json
+            SaveSettings(showNotification: false);
         }
 
         private void AppendLog(string text, Color color)
@@ -1227,13 +1408,12 @@ namespace DesktopBulkEmailSender
         {
             try
             {
-                var seenEmails = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
                 var recipientItems = new List<RecipientItem>();
                 foreach (DataGridViewRow r in dgvRecipients.Rows)
                 {
                     if (r.IsNewRow) continue;
                     var clean = CleanEmail(r.Cells["Email"].Value?.ToString() ?? "");
-                    if (string.IsNullOrEmpty(clean) || !seenEmails.Add(clean)) continue;
+                    if (string.IsNullOrEmpty(clean)) continue;
 
                     recipientItems.Add(new RecipientItem
                     {
@@ -1339,18 +1519,18 @@ namespace DesktopBulkEmailSender
 
                 // Recipients
                 dgvRecipients.Rows.Clear();
-                var loadedEmails = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
                 if (settings.Recipients != null && settings.Recipients.Count > 0)
                 {
                     foreach (var item in settings.Recipients)
                     {
                         var clean = CleanEmail(item.Email);
-                        if (string.IsNullOrWhiteSpace(clean) || !loadedEmails.Add(clean)) continue;
+                        if (string.IsNullOrWhiteSpace(clean)) continue;
 
                         int idx = dgvRecipients.Rows.Add();
-                        dgvRecipients.Rows[idx].Cells["Send"].Value    = item.IsEnabled;
-                        dgvRecipients.Rows[idx].Cells["Email"].Value   = clean;
-                        dgvRecipients.Rows[idx].Cells["Company"].Value = ExtractCompany(clean);
+                        dgvRecipients.Rows[idx].Cells["Send"].Value       = item.IsEnabled;
+                        dgvRecipients.Rows[idx].Cells["Email"].Value      = clean;
+                        dgvRecipients.Rows[idx].Cells["Company"].Value    = ExtractCompany(clean);
+                        dgvRecipients.Rows[idx].Cells["Duplicates"].Value = 0;
                     }
                 }
 
@@ -1361,6 +1541,7 @@ namespace DesktopBulkEmailSender
                     ApplySorting();
                 }
                 UpdateRecipientCount();
+                UpdateDuplicateCounts();
 
                 SetStatus("Loaded saved settings and recipients.");
             }

@@ -43,11 +43,15 @@ All operations, recipient data, and credentials remain 100% on your local machin
 - **Dynamic Jitter Delays**: Configure min/max random delays (e.g., 5s to 15s) between dispatched messages to avoid rate limits and anti-spam flags.
 
 ### 2. 👥 Advanced Recipient Management
-- **Interactive Data Grid**: Individual `Send?` checkbox toggles for granular control over who receives each dispatch.
-- **Bulk Paste & Import**: Rapidly import hundreds of emails from CSV, newline-delimited text, or comma/semicolon-separated lists.
-- **Comment Support**: Prefix any line with `#` to import it in a disabled/unselected state.
+- **Interactive Data Grid**: Individual `Send?` checkbox toggles, `Email Address`, `Company / Domain`, and dedicated `Duplicates` column.
+- **Bulk Paste & Import**: Rapidly import hundreds of emails from CSV, newline-delimited text, or comma/semicolon-separated lists. Clicking **⬅ Add to Recipients** automatically replaces the existing grid with the newly parsed list.
+- **Duplicate Email Detection & Visual Highlighting**:
+  - Automatically calculates duplicate counts (`n`) per recipient (`0` for unique addresses, `1, 2, ...` for duplicates).
+  - Highlights duplicate rows with a soft red background (`#FEE2E2`) and deep red text (`#991B1B`) for instant visual identification.
+- **One-Click Deduplication**: The **Dedup** tool removes duplicate email rows across the list in one click, resetting counts and clearing warning highlights.
+- **Automatic Sent State Tracking**: As emails are dispatched successfully, they are automatically unchecked in the grid and prepended with `#` in the bulk paste box to prevent accidental re-sending.
+- **Comment Support**: Prefix any line with `#` to import it in a disabled/unselected state. Lines starting with `-` or `=` are skipped automatically as section dividers.
 - **Automatic Domain & Company Extraction**: Extracts root domains and generates company tags on the fly (e.g., `john@acme.corp` → `ACME`).
-- **One-Click Deduplication**: Automatically deduplicates emails during bulk paste, inline manual edits, or via the **Dedup** tool.
 - **Smart Grouping & Sorting**: Sort by original order, grouped by company/domain, or alphabetically (A → Z, Z → A).
 
 ### 3. 📝 Rich HTML Email Body & Preview
@@ -117,8 +121,9 @@ DesktopBulkEmailSender/
    - Set randomized delays between emails (recommended: **5 to 15 seconds**).
 3. **Import Recipients** (*Recipients Tab*):
    - Paste recipient emails into the right pane.
-   - Click **⬅ Add to Recipients**.
-   - Sort by Company or check/uncheck specific contacts as desired.
+   - Click **⬅ Add to Recipients** (replaces grid contents with the new list).
+   - Review highlighted duplicates in soft red (`Duplicates` column > 0) and click **Dedup** to clean them up if desired.
+   - Sort by Company or check/uncheck specific contacts as needed.
 4. **Compose Email** (*Email Body Tab*):
    - Provide a subject line.
    - Type or paste your HTML code, or click **📂 Load HTML File**.
