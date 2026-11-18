@@ -10,6 +10,9 @@ Write-Host "=================================================" -ForegroundColor 
 Write-Host " Step 1: Publishing .NET 8 WinForms Application  " -ForegroundColor Cyan
 Write-Host "=================================================" -ForegroundColor Cyan
 
+# Start from an empty ./publish so a failed build can never leave a stale exe behind
+if (Test-Path "./publish") { Remove-Item "./publish" -Recurse -Force }
+
 # Publish self-contained, single-file executable to ./publish
 dotnet publish DesktopBulkEmailSender/DesktopBulkEmailSender.csproj `
     -c Release `
@@ -18,6 +21,12 @@ dotnet publish DesktopBulkEmailSender/DesktopBulkEmailSender.csproj `
     -p:PublishSingleFile=true `
     -p:EnableCompressionInSingleFile=true `
     -o ./publish
+
+# $ErrorActionPreference does not apply to native executables — check the exit code explicitly
+if ($LASTEXITCODE -ne 0) {
+    Write-Error "dotnet publish failed with exit code $LASTEXITCODE"
+    exit $LASTEXITCODE
+}
 
 if (-not (Test-Path "./publish/DesktopBulkEmailSender.exe")) {
     Write-Error "Publish failed: DesktopBulkEmailSender.exe was not found in ./publish"
@@ -52,6 +61,10 @@ foreach ($path in $isccCandidates) {
 if ($isccPath) {
     Write-Host "Found Inno Setup Compiler at: $isccPath" -ForegroundColor DarkCyan
     & $isccPath "installer_setup.iss"
+    if ($LASTEXITCODE -ne 0) {
+        Write-Error "Inno Setup compilation failed with exit code $LASTEXITCODE"
+        exit $LASTEXITCODE
+    }
     Write-Host "`n✔ Installer generated in ./installer_output/" -ForegroundColor Green
 } else {
     Write-Host "Inno Setup Compiler (ISCC.exe) was not found in common paths." -ForegroundColor Yellow

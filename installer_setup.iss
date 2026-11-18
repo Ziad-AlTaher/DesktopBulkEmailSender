@@ -8,7 +8,8 @@
 #define MyAppPublisher   "Ziad Al-Taher"
 #define MyAppExeName     "DesktopBulkEmailSender.exe"
 #define MyAppURL         "https://github.com/Ziad-AlTaher/DesktopBulkEmailSender"
-#define SourceDir        "DesktopBulkEmailSender\bin\\Release\\net8.0-windows"
+; Output of build_installer.ps1 (self-contained, single-file win-x64 publish)
+#define SourceDir        "publish"
 
 [Setup]
 ; Unique GUID identifying this application for install / updates
@@ -53,9 +54,8 @@ Name: "english"; MessagesFile: "compiler:Default.isl"
 Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{cm:AdditionalIcons}"; Flags: unchecked
 
 [Files]
-; Packages the published payload from the Release folder
-Source: "{#SourceDir}\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
-Source: "app_icon.ico"; DestDir: "{app}"; Flags: ignoreversion
+; Packages the published payload (exe + app_icon.ico/png copied by the csproj); debug symbols are left out
+Source: "{#SourceDir}\*"; Excludes: "*.pdb"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
 
 [Icons]
 ; Start Menu shortcuts
