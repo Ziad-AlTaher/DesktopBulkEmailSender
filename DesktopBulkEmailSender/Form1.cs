@@ -8,6 +8,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using System.Windows.Forms;
 using System.Text.Json;
+using MailKit;
 using MailKit.Net.Smtp;
 using MailKit.Security;
 using MimeKit;
@@ -20,6 +21,7 @@ namespace DesktopBulkEmailSender
         private readonly List<string> _attachments = new List<string>();
         private CancellationTokenSource _cts;
         private bool _isSending = false;
+        private bool _closeAfterSend = false;
 
         // ── Controls ─────────────────────────────────────────────────────
         private TabControl tabMain;
@@ -1139,6 +1141,7 @@ namespace DesktopBulkEmailSender
             // Snapshot settings
             _isSending        = true;
             _cts              = new CancellationTokenSource();
+            var token         = _cts.Token;
             btnSend.Enabled   = false;
             btnCancel.Enabled = true;
 
@@ -1159,87 +1162,179 @@ namespace DesktopBulkEmailSender
             var  minDelay    = (int)nudMinDelay.Value;
             var  maxDelay    = (int)nudMaxDelay.Value;
             var  attachments = _attachments.ToList();
+            // Port 465 is implicit TLS (SSL from the first byte); everything else must upgrade via STARTTLS.
+            var  socketOptions = smtpPort == 465 ? SecureSocketOptions.SslOnConnect : SecureSocketOptions.StartTls;
 
-            AppendLog($"═══ Starting — {recipients.Count} recipients   {DateTime.Now:HH:mm:ss} ═══",
-                      Color.FromArgb(96, 165, 250));
+            var colInfo  = Color.FromArgb(96, 165, 250);
+            var colOk    = Color.FromArgb(134, 239, 172);
+            var colError = Color.FromArgb(252, 165, 165);
+            var colWarn  = Color.FromArgb(251, 191, 36);
+            var colMuted = Color.FromArgb(148, 163, 184);
 
-            await Task.Run(async () =>
+            AppendLog($"═══ Starting — {recipients.Count} recipients   {DateTime.Now:HH:mm:ss} ═══", colInfo);
+
+            try
             {
-                for (int i = 0; i < recipients.Count; i++)
+                await Task.Run(async () =>
                 {
-                    if (_cts.Token.IsCancellationRequested) break;
+                    // One SMTP session for the whole run; reconnects only when the server drops it.
+                    using var client = new SmtpClient();
 
-                    var toEmail = recipients[i];
-                    try
+                    async Task EnsureConnectedAsync()
                     {
-                        var message = new MimeMessage();
-                        message.From.Add(new MailboxAddress(senderName, senderEmail));
-                        message.To.Add(new MailboxAddress(string.Empty, toEmail));
-                        message.Subject = subject;
-
-                        var uniqueBody = htmlBody +
-                            $"<div style=\"display:none;color:transparent;width:0;height:0;\">{Guid.NewGuid()}</div>";
-                        var builder = new BodyBuilder { HtmlBody = uniqueBody };
-
-                        foreach (var att in attachments)
-                            if (File.Exists(att))
-                                builder.Attachments.Add(att);
-
-                        message.Body = builder.ToMessageBody();
-
-                        using var client = new SmtpClient();
-                        await client.ConnectAsync(smtpHost, smtpPort, SecureSocketOptions.StartTls, _cts.Token);
-                        await client.AuthenticateAsync(senderEmail, appPassword, _cts.Token);
-                        await client.SendAsync(message, _cts.Token);
-                        await client.DisconnectAsync(true, _cts.Token);
-
-                        sent++;
-                        AppendLog($"[{DateTime.Now:HH:mm:ss}] ✔  {i + 1}/{recipients.Count}  →  {toEmail}",
-                                  Color.FromArgb(134, 239, 172));
-
-                        Invoke((MethodInvoker)(() =>
+                        try
                         {
-                            MarkEmailAsSent(toEmail);
-                        }));
-                    }
-                    catch (OperationCanceledException)
-                    {
-                        AppendLog("⏹  Sending cancelled by user.", Color.FromArgb(251, 191, 36));
-                        break;
-                    }
-                    catch (Exception ex)
-                    {
-                        failed++;
-                        AppendLog($"[{DateTime.Now:HH:mm:ss}] ✘  {i + 1}/{recipients.Count}  →  {toEmail}  ({ex.Message})",
-                                  Color.FromArgb(252, 165, 165));
-                    }
-
-                    Invoke((MethodInvoker)(() =>
-                    {
-                        pbProgress.Value = Math.Min(i + 1, recipients.Count);
-                        lblProgress.Text = $"{i + 1} / {recipients.Count} processed   ✔ {sent} sent   ✘ {failed} failed";
-                        SetStatus($"Sending... {i + 1}/{recipients.Count}");
-                    }));
-
-                    if (i < recipients.Count - 1 && !_cts.Token.IsCancellationRequested)
-                    {
-                        int delay = maxDelay > minDelay ? random.Next(minDelay, maxDelay + 1) : minDelay;
-                        if (delay > 0)
+                            if (!client.IsConnected)
+                                await client.ConnectAsync(smtpHost, smtpPort, socketOptions, token);
+                            if (!client.IsAuthenticated)
+                                await client.AuthenticateAsync(senderEmail, appPassword, token);
+                        }
+                        catch (Exception ex) when (ex is not OperationCanceledException)
                         {
-                            AppendLog($"         ⏳  Waiting {delay}s before next email...", Color.FromArgb(148, 163, 184));
-                            await Task.Delay(TimeSpan.FromSeconds(delay), _cts.Token).ContinueWith(_ => { });
+                            // Bad host/port/TLS or bad credentials will fail every recipient — stop the run.
+                            throw new FatalSendException(ex);
                         }
                     }
-                }
 
-                AppendLog($"═══ Done  |  Sent: {sent}  |  Failed: {failed}  |  Total: {recipients.Count} ═══",
-                          Color.FromArgb(96, 165, 250));
-            });
+                    try
+                    {
+                        for (int i = 0; i < recipients.Count; i++)
+                        {
+                            if (token.IsCancellationRequested) break;
 
-            _isSending        = false;
-            btnSend.Enabled   = true;
-            btnCancel.Enabled = false;
-            SetStatus($"Done — Sent: {sent}  |  Failed: {failed}  |  Total: {recipients.Count}");
+                            var toEmail = recipients[i];
+                            try
+                            {
+                                var message = new MimeMessage();
+                                message.From.Add(new MailboxAddress(senderName, senderEmail));
+                                message.To.Add(new MailboxAddress(string.Empty, toEmail));
+                                message.Subject = subject;
+
+                                var uniqueBody = htmlBody +
+                                    $"<div style=\"display:none;color:transparent;width:0;height:0;\">{Guid.NewGuid()}</div>";
+                                var builder = new BodyBuilder { HtmlBody = uniqueBody };
+
+                                foreach (var att in attachments)
+                                    if (File.Exists(att))
+                                        builder.Attachments.Add(att);
+
+                                message.Body = builder.ToMessageBody();
+
+                                // Up to two attempts: retry once on a transient (4xx) reply or a dropped connection.
+                                for (int attempt = 1; ; attempt++)
+                                {
+                                    try
+                                    {
+                                        await EnsureConnectedAsync();
+                                        await client.SendAsync(message, token);
+                                        break;
+                                    }
+                                    catch (SmtpCommandException ex) when (attempt == 1 && IsTransient(ex))
+                                    {
+                                        AppendLog($"         ↻  Temporary error ({(int)ex.StatusCode}), retrying in 10s...", colWarn);
+                                        await Task.Delay(TimeSpan.FromSeconds(10), token);
+                                    }
+                                    catch (Exception ex) when (attempt == 1 && IsConnectionLost(ex))
+                                    {
+                                        AppendLog("         ↻  Connection lost, reconnecting...", colWarn);
+                                        try { client.Disconnect(false); } catch { }
+                                    }
+                                }
+
+                                sent++;
+                                AppendLog($"[{DateTime.Now:HH:mm:ss}] ✔  {i + 1}/{recipients.Count}  →  {toEmail}", colOk);
+                                RunOnUi(() => MarkEmailAsSent(toEmail));
+                            }
+                            catch (OperationCanceledException)
+                            {
+                                AppendLog("⏹  Sending cancelled by user.", colWarn);
+                                break;
+                            }
+                            catch (FatalSendException ex)
+                            {
+                                var reason = ex.InnerException is AuthenticationException
+                                    ? "Authentication failed — check the email address and app password."
+                                    : $"Could not connect to {smtpHost}:{smtpPort} — check host, port and network.";
+                                AppendLog($"[{DateTime.Now:HH:mm:ss}] ✘  Stopping: {reason} ({ex.InnerException?.Message})", colError);
+                                AppendLog("         Recipients already sent are unchecked; fix the problem and press Send to resume.", colMuted);
+                                break;
+                            }
+                            catch (Exception ex)
+                            {
+                                failed++;
+                                AppendLog($"[{DateTime.Now:HH:mm:ss}] ✘  {i + 1}/{recipients.Count}  →  {toEmail}  ({ex.Message})", colError);
+                            }
+
+                            int done = i + 1;
+                            RunOnUi(() =>
+                            {
+                                pbProgress.Value = Math.Min(done, recipients.Count);
+                                lblProgress.Text = $"{done} / {recipients.Count} processed   ✔ {sent} sent   ✘ {failed} failed";
+                                SetStatus($"Sending... {done}/{recipients.Count}");
+                            });
+
+                            if (i < recipients.Count - 1 && !token.IsCancellationRequested)
+                            {
+                                int delay = maxDelay > minDelay ? random.Next(minDelay, maxDelay + 1) : minDelay;
+                                if (delay > 0)
+                                {
+                                    AppendLog($"         ⏳  Waiting {delay}s before next email...", colMuted);
+                                    await Task.Delay(TimeSpan.FromSeconds(delay), token).ContinueWith(_ => { });
+                                }
+                            }
+                        }
+                    }
+                    finally
+                    {
+                        if (client.IsConnected)
+                        {
+                            try { await client.DisconnectAsync(true, CancellationToken.None); } catch { }
+                        }
+                    }
+
+                    AppendLog($"═══ Done  |  Sent: {sent}  |  Failed: {failed}  |  Total: {recipients.Count} ═══", colInfo);
+                });
+            }
+            catch (Exception ex)
+            {
+                AppendLog($"✘  Unexpected error: {ex.Message}", colError);
+            }
+            finally
+            {
+                _isSending        = false;
+                _cts.Dispose();
+                _cts              = null;
+                btnSend.Enabled   = true;
+                btnCancel.Enabled = false;
+                SetStatus($"Done — Sent: {sent}  |  Failed: {failed}  |  Total: {recipients.Count}");
+            }
+
+            // The user asked to exit while sending: close now that the run has stopped cleanly.
+            if (_closeAfterSend)
+                Close();
+        }
+
+        private sealed class FatalSendException : Exception
+        {
+            public FatalSendException(Exception inner) : base(inner.Message, inner) { }
+        }
+
+        private static bool IsTransient(SmtpCommandException ex)
+        {
+            int code = (int)ex.StatusCode;
+            return code >= 400 && code < 500;
+        }
+
+        private static bool IsConnectionLost(Exception ex) =>
+            ex is ServiceNotConnectedException || ex is SmtpProtocolException || ex is IOException;
+
+        /// <summary>Runs an action on the UI thread from the send worker, ignoring a form that is already gone.</summary>
+        private void RunOnUi(Action action)
+        {
+            if (IsDisposed || !IsHandleCreated) return;
+            try { Invoke(action); }
+            catch (ObjectDisposedException) { }
+            catch (InvalidOperationException) { }
         }
 
         private void MarkEmailAsSent(string sentEmail)
@@ -1258,25 +1353,18 @@ namespace DesktopBulkEmailSender
             }
             UpdateRecipientCount();
 
-            // 2. Prepend '#' before this email in the paste box (rtbPaste)
+            // 2. Prepend '#' to this exact email's token in the paste box (rtbPaste)
             if (!string.IsNullOrEmpty(rtbPaste.Text))
             {
                 var lines = rtbPaste.Lines;
                 bool modified = false;
                 for (int idx = 0; idx < lines.Length; idx++)
                 {
-                    var line = lines[idx];
-                    var trimmed = line.Trim();
-                    if (trimmed.IndexOf(sentEmail, StringComparison.OrdinalIgnoreCase) >= 0)
+                    var updated = CommentOutEmailInLine(lines[idx], sentEmail);
+                    if (!ReferenceEquals(updated, lines[idx]))
                     {
-                        if (!trimmed.StartsWith("#"))
-                        {
-                            int indentLen = line.Length - line.TrimStart().Length;
-                            string indent = line.Substring(0, indentLen);
-                            string rest = line.Substring(indentLen);
-                            lines[idx] = indent + "#" + rest;
-                            modified = true;
-                        }
+                        lines[idx] = updated;
+                        modified = true;
                     }
                 }
                 if (modified)
@@ -1287,6 +1375,32 @@ namespace DesktopBulkEmailSender
 
             // 3. Persist immediately to settings.json
             SaveSettings(showNotification: false);
+        }
+
+        /// <summary>
+        /// Prefixes '#' to each ',' / ';'-separated token of <paramref name="line"/> whose email is exactly
+        /// <paramref name="email"/>. Other emails on the same line stay active, matching how
+        /// ParseAndAddRecipients reads '#' per token. Returns the same instance when nothing changes.
+        /// </summary>
+        internal static string CommentOutEmailInLine(string line, string email)
+        {
+            if (string.IsNullOrEmpty(line) || line.IndexOf(email, StringComparison.OrdinalIgnoreCase) < 0)
+                return line;
+
+            var parts = System.Text.RegularExpressions.Regex.Split(line, "([,;])"); // keeps the separators
+            bool changed = false;
+            for (int p = 0; p < parts.Length; p++)
+            {
+                var part = parts[p];
+                if (part == "," || part == ";") continue;
+                if (part.TrimStart().StartsWith("#")) continue;
+                if (!string.Equals(CleanEmail(part), email, StringComparison.OrdinalIgnoreCase)) continue;
+
+                int indentLen = part.Length - part.TrimStart().Length;
+                parts[p] = part.Substring(0, indentLen) + "#" + part.Substring(indentLen);
+                changed = true;
+            }
+            return changed ? string.Concat(parts) : line;
         }
 
         private void AppendLog(string text, Color color)
@@ -1426,7 +1540,8 @@ namespace DesktopBulkEmailSender
                 {
                     SenderEmail   = txtSenderEmail.Text.Trim(),
                     SenderName    = txtSenderName.Text.Trim(),
-                    AppPassword   = txtAppPassword.Text,
+                    AppPassword          = string.Empty,
+                    AppPasswordProtected = SecretProtector.Protect(txtAppPassword.Text),
                     SmtpHost      = txtSmtpHost.Text.Trim(),
                     SmtpPort      = (int)nudSmtpPort.Value,
                     MinDelay      = (int)nudMinDelay.Value,
@@ -1441,7 +1556,7 @@ namespace DesktopBulkEmailSender
 
                 var options = new JsonSerializerOptions { WriteIndented = true };
                 var json = JsonSerializer.Serialize(settings, options);
-                File.WriteAllText(GetSettingsFilePath(), json, Encoding.UTF8);
+                WriteSettingsAtomically(GetSettingsFilePath(), json);
 
                 SetStatus($"Settings & data saved ({DateTime.Now:HH:mm:ss})");
 
@@ -1463,17 +1578,57 @@ namespace DesktopBulkEmailSender
             }
         }
 
+        /// <summary>
+        /// Writes to a temp file, then swaps it in, keeping the previous file as settings.json.bak.
+        /// A crash mid-write can never leave a half-written settings.json behind.
+        /// </summary>
+        private static void WriteSettingsAtomically(string path, string json)
+        {
+            var tmp = path + ".tmp";
+            using (var fs = new FileStream(tmp, FileMode.Create, FileAccess.Write, FileShare.None))
+            using (var writer = new StreamWriter(fs, new UTF8Encoding(false)))
+            {
+                writer.Write(json);
+                writer.Flush();
+                fs.Flush(flushToDisk: true);
+            }
+
+            if (File.Exists(path))
+                File.Replace(tmp, path, path + ".bak", ignoreMetadataErrors: true);
+            else
+                File.Move(tmp, path);
+        }
+
+        /// <summary>Reads settings.json, falling back to settings.json.bak if the main file is missing or unreadable.</summary>
+        private static AppSettings ReadSettingsFile(out bool usedBackup)
+        {
+            usedBackup = false;
+            var path = GetSettingsFilePath();
+            foreach (var candidate in new[] { path, path + ".bak" })
+            {
+                try
+                {
+                    if (!File.Exists(candidate)) continue;
+                    var json = File.ReadAllText(candidate, Encoding.UTF8);
+                    if (string.IsNullOrWhiteSpace(json)) continue;
+                    var settings = JsonSerializer.Deserialize<AppSettings>(json);
+                    if (settings == null) continue;
+                    usedBackup = candidate != path;
+                    return settings;
+                }
+                catch (Exception ex) when (ex is JsonException || ex is IOException || ex is UnauthorizedAccessException)
+                {
+                    // try the next candidate
+                }
+            }
+            return null;
+        }
+
         private void LoadSettings()
         {
             try
             {
-                var file = GetSettingsFilePath();
-                if (!File.Exists(file)) return;
-
-                var json = File.ReadAllText(file, Encoding.UTF8);
-                if (string.IsNullOrWhiteSpace(json)) return;
-
-                var settings = JsonSerializer.Deserialize<AppSettings>(json);
+                var settings = ReadSettingsFile(out bool usedBackup);
                 if (settings == null) return;
 
                 // Config tab
@@ -1481,8 +1636,14 @@ namespace DesktopBulkEmailSender
                     txtSenderEmail.Text = settings.SenderEmail;
                 if (!string.IsNullOrEmpty(settings.SenderName))
                     txtSenderName.Text = settings.SenderName;
-                if (!string.IsNullOrEmpty(settings.AppPassword))
-                    txtAppPassword.Text = settings.AppPassword;
+                // Prefer the DPAPI-encrypted password; fall back to a legacy plain-text one
+                // (it is re-saved encrypted, and the plain copy dropped, on the next save).
+                var password = SecretProtector.Unprotect(settings.AppPasswordProtected);
+                bool hadPlainPassword = !string.IsNullOrEmpty(settings.AppPassword);
+                if (string.IsNullOrEmpty(password))
+                    password = settings.AppPassword;
+                if (!string.IsNullOrEmpty(password))
+                    txtAppPassword.Text = password;
                 if (!string.IsNullOrEmpty(settings.SmtpHost))
                     txtSmtpHost.Text = settings.SmtpHost;
                 if (settings.SmtpPort > 0)
@@ -1543,12 +1704,32 @@ namespace DesktopBulkEmailSender
                 UpdateRecipientCount();
                 UpdateDuplicateCounts();
 
-                SetStatus("Loaded saved settings and recipients.");
+                if (hadPlainPassword)
+                    MigratePlainTextPassword();
+
+                SetStatus(usedBackup
+                    ? "settings.json was unreadable — restored settings and recipients from the last backup."
+                    : "Loaded saved settings and recipients.");
             }
             catch (Exception ex)
             {
                 SetStatus($"Could not load previous settings: {ex.Message}");
             }
+        }
+
+        /// <summary>
+        /// Re-saves a pre-1.2 settings file with the password encrypted, then deletes the backup,
+        /// which at that point is the old file still holding the password in plain text.
+        /// </summary>
+        private void MigratePlainTextPassword()
+        {
+            SaveSettings(showNotification: false);
+            try
+            {
+                var bak = GetSettingsFilePath() + ".bak";
+                if (File.Exists(bak)) File.Delete(bak);
+            }
+            catch { }
         }
 
         private static void OpenInBrowser(string urlOrPath)
@@ -1571,13 +1752,19 @@ namespace DesktopBulkEmailSender
         {
             if (_isSending)
             {
+                // Never let the form be destroyed while the worker still touches it: cancel, keep the
+                // window open, and let BtnSend_Click close it once the worker has stopped.
+                e.Cancel = true;
+                if (_closeAfterSend) return;
+
                 if (MessageBox.Show("Emails are still sending. Cancel and exit?", "Exit",
-                    MessageBoxButtons.YesNo, MessageBoxIcon.Warning) == DialogResult.No)
+                    MessageBoxButtons.YesNo, MessageBoxIcon.Warning) == DialogResult.Yes)
                 {
-                    e.Cancel = true;
-                    return;
+                    _closeAfterSend = true;
+                    SetStatus("Stopping send, then exiting...");
+                    _cts?.Cancel();
                 }
-                _cts?.Cancel();
+                return;
             }
             SaveSettings(showNotification: false);
             base.OnFormClosing(e);
