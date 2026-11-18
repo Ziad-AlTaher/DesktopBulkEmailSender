@@ -4,12 +4,21 @@
 ; ==============================================================================
 
 #define MyAppName        "Desktop Bulk Email Sender"
-#define MyAppVersion     "1.1.0"
 #define MyAppPublisher   "Ziad Al-Taher"
 #define MyAppExeName     "DesktopBulkEmailSender.exe"
 #define MyAppURL         "https://github.com/Ziad-AlTaher/DesktopBulkEmailSender"
 ; Output of build_installer.ps1 (self-contained, single-file win-x64 publish)
 #define SourceDir        "publish"
+
+; The version lives only in DesktopBulkEmailSender.csproj (<Version>).
+; build_installer.ps1 passes it as /DMyAppVersion=x.y.z; when compiling from the
+; Inno Setup IDE instead, it is read from the published exe's file version.
+#ifndef MyAppVersion
+  #if !FileExists(AddBackslash(SourceDir) + MyAppExeName)
+    #error "publish\DesktopBulkEmailSender.exe not found - run build_installer.ps1 first"
+  #endif
+  #define MyAppVersion GetVersionNumbersString(AddBackslash(SourceDir) + MyAppExeName)
+#endif
 
 [Setup]
 ; Unique GUID identifying this application for install / updates
@@ -33,7 +42,7 @@ OutputBaseFilename=DesktopBulkEmailSender_Setup_v{#MyAppVersion}
 Compression=lzma2/ultra64
 SolidCompression=yes
 WizardStyle=modern
-SetupIconFile=app_icon.ico
+SetupIconFile=DesktopBulkEmailSender\app_icon.ico
 
 ; Execution privileges (Allows standard user install or admin for all users)
 PrivilegesRequired=lowest
@@ -68,7 +77,3 @@ Name: "{autodesktop}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"; Tasks: de
 [Run]
 ; Option to launch the application immediately after setup finishes
 Filename: "{app}\{#MyAppExeName}"; Description: "{cm:LaunchProgram,{#StringChange(MyAppName, '&', '&&')}}"; Flags: nowait postinstall skipifsilent
-
-[UninstallDelete]
-; Clean up any leftover temporary preview files if created in the app dir
-Type: files; Name: "{app}\email_preview.html"
